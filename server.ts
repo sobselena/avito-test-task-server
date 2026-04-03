@@ -3,7 +3,7 @@ import Fastify from 'fastify';
 import items from 'data/items.json' with { type: 'json' };
 import { Item } from 'src/types.ts';
 import { ItemsGetInQuerySchema, ItemUpdateInSchema } from 'src/validation.ts';
-import { treeifyError, ZodError } from 'zod';
+import { number, treeifyError, ZodError } from 'zod';
 import { doesItemNeedRevision } from './src/utils.ts';
 
 const ITEMS = items as Item[];
@@ -63,6 +63,8 @@ interface ItemsGetRequest extends Fastify.RequestGenericInterface {
     skip?: string;
     categories?: string;
     needsRevision?: string;
+    sortColumn?: string;
+    sortDirection?: string;
   };
 }
 
@@ -75,6 +77,7 @@ fastify.get<ItemsGetRequest>('/items', request => {
     categories,
     sortColumn,
     sortDirection,
+
   } = ItemsGetInQuerySchema.parse(request.query);
 
   const filteredItems = ITEMS.filter(item => {
@@ -89,20 +92,24 @@ fastify.get<ItemsGetRequest>('/items', request => {
   return {
     items: filteredItems
       .toSorted((item1, item2) => {
-        let comparisonValue = 0;
+  if (!sortColumn || !sortDirection) return 0;
 
-        if (!sortDirection) return comparisonValue;
+  let comparisonValue = 0;
 
-        if (sortColumn === 'title') {
-          comparisonValue = item1.title.localeCompare(item2.title);
-        } else if (sortColumn === 'createdAt') {
-          comparisonValue =
-            new Date(item1.createdAt).valueOf() -
-            new Date(item2.createdAt).valueOf();
-        }
+  if (sortColumn === 'title') {
+    comparisonValue = item1.title.localeCompare(item2.title);
+  } else if (sortColumn === 'createdAt') {
+    comparisonValue =
+      new Date(item1.createdAt).valueOf() -
+      new Date(item2.createdAt).valueOf();
+  } else if (sortColumn === 'price') {
+    comparisonValue = item1.price - item2.price;
+  }
 
-        return (sortDirection === 'desc' ? -1 : 1) * comparisonValue;
-      })
+  return sortDirection === 'desc'
+    ? -comparisonValue
+    : comparisonValue;
+})
       .slice(skip, skip + limit)
       .map(item => ({
         id: item.id,
